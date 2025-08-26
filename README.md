@@ -19,28 +19,47 @@ A Model Context Protocol (MCP) server that provides comprehensive access to Serv
 - Query, get, create, update, and delete records
 - Dynamic field selection and advanced querying
 
-### 🔄 Process Definition Management (7 tools)
-- **NEW!** Complete process definition lifecycle
+### � Attachment Management (5 tools)
+- **NEW!** Complete file attachment lifecycle
+- List, download, upload, and delete attachments
+- Support for any ServiceNow table with attachments
+- Base64 encoding/decoding for file transfers
+
+### �🔄 Process Definition Management (7 tools)
+- Complete process definition lifecycle
 - Create, update, search, and validate process definitions
 - Schema introspection and process validation
 - Support for conditions, categories, and table bindings
 
 ### 🏊 Process Lane Management (7 tools)
-- **NEW!** Full process lane creation and management
+- Full process lane creation and management
 - Create lanes with proper ordering and conditions
 - Lane lifecycle management (create, update, delete)
 - Integration with process definitions
 
 ### 🎯 Process Activity Management (8 tools)
-- **NEW!** Complete activity configuration system
+- Complete activity configuration system
 - Create and configure process activities
 - Activity definition discovery and management
 - Input/output parameter configuration
 - Activity positioning and flow control
 
+### 🎯 MCP Prompts (10 prompts)
+- **NEW!** Pre-built prompt templates for common tasks
+- Structured guidance for complex workflows
+- Parameterized prompts for reusable interactions
+- Incident management, script development, and analysis workflows
+
+### 📁 MCP Resources (2 resources)
+- **NEW!** Access to ServiceNow attachments as resources
+- Example prompts and usage guide resources
+- Integration with file-based workflows
+
 ## Total Capabilities
 
-- **37 tools** across **6 categories**
+- **42 tools** across **7 categories**
+- **10 structured prompts** for guided interactions
+- **2 resources** for file and documentation access
 - **Complete process design** from definition to activities
 - **Full ServiceNow integration** with OAuth 2.0 authentication
 - **MCP protocol compliance** for AI assistant integration
@@ -170,6 +189,37 @@ This MCP server enables complete ServiceNow process design:
 3. **Configure Activities**: Add activities to lanes with proper activity definitions
 4. **Validate Process**: Use validation tools to ensure process integrity
 5. **Manage Lifecycle**: Update, modify, and maintain processes over time
+
+## Documentation
+
+Comprehensive documentation is available in the `docs/` directory:
+
+- **[USAGE.md](docs/USAGE.md)** - Detailed usage guide with examples for all tools
+- **[EXAMPLE_PROMPTS.md](docs/EXAMPLE_PROMPTS.md)** - Natural language examples for every tool and use case
+- **[PROMPTS_GUIDE.md](docs/PROMPTS_GUIDE.md)** - Complete guide to using MCP prompts with the server
+- **[OAUTH_SETUP.md](docs/OAUTH_SETUP.md)** - Step-by-step OAuth configuration guide
+
+### Quick Start Examples
+
+**Create a critical incident:**
+```
+Create a critical incident for email server outage with description "Email server completely down" and priority 1
+```
+
+**List recent incidents:**
+```
+Show me all high priority incidents created in the last 24 hours
+```
+
+**Search for utility scripts:**
+```
+Find all Script Includes that contain "StringUtil" in their name or code
+```
+
+**Upload an attachment:**
+```
+Upload a screenshot to incident INC0010001 as an attachment with description "Error screenshot showing server timeout message"
+```
 
 ## Authentication
 
