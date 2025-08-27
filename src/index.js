@@ -7,6 +7,7 @@ import {
   ListToolsRequestSchema,
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
+  ListResourceTemplatesRequestSchema,
   ListPromptsRequestSchema,
   GetPromptRequestSchema,
   McpError,
@@ -21,7 +22,6 @@ import { handleTableTools, registerTableTools } from './tools/table-api.js';
 import { handleProcessDefinitionTools, registerProcessDefinitionTools } from './tools/process-definitions.js';
 import { handleProcessLaneTools, registerProcessLaneTools } from './tools/process-lanes.js';
 import { handleProcessActivityTools, registerProcessActivityTools } from './tools/process-activities.js';
-import { handleAttachmentTools, registerAttachmentTools } from './tools/attachments.js';
 
 dotenv.config();
 
@@ -29,13 +29,14 @@ class ServiceNowMCPServer {
   constructor() {
     this.server = new Server(
       { name: 'servicenow-mcp-server', version: '1.0.0' },
-      { capabilities: { tools: {}, resources: {}, prompts: {} } }
+      { capabilities: { tools: {}, resources: {}, prompts: {}, resourceTemplates: {} } }
     );
     this.serviceNowClient = null;
     this.toolDefinitions = [];
     this.toolRouter = [];
     this.setupTools();
     this.setupResources();
+    this.setupResourceTemplates();
     this.setupPrompts();
     this.setupErrorHandling();
   }
@@ -105,10 +106,6 @@ class ServiceNowMCPServer {
     return registerProcessActivityTools();
   }
 
-  async getAttachmentTools() {
-    return registerAttachmentTools();
-  }
-
   // -------- Setup Tools & Routing --------
   setupTools() {
     this.toolRouter = [
@@ -138,10 +135,6 @@ class ServiceNowMCPServer {
         match: (n) => n.includes('process_activity') || n.includes('activity_definition'),
         handler: handleProcessActivityTools,
       },
-      {
-        match: (n) => n.includes('_attachment'),
-        handler: handleAttachmentTools,
-      },
     ];
 
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -153,7 +146,6 @@ class ServiceNowMCPServer {
           this.getProcessDefinitionTools(),
           this.getProcessLaneTools(),
           this.getProcessActivityTools(),
-          this.getAttachmentTools(),
         ]);
 
         const collected = [];
@@ -209,15 +201,9 @@ class ServiceNowMCPServer {
       return {
         resources: [
           {
-            uri: 'servicenow://attachments',
-            name: 'ServiceNow Attachments',
-            description: 'Access to ServiceNow attachment files',
-            mimeType: 'application/json'
-          },
-          {
             uri: 'servicenow://examples',
             name: 'Example Prompts',
-            description: 'Example prompts for using ServiceNow MCP tools',
+            description: 'Example prompts and documentation for using ServiceNow MCP tools',
             mimeType: 'text/markdown'
           }
         ]
@@ -242,46 +228,220 @@ class ServiceNowMCPServer {
         };
       }
 
-      if (uri.startsWith('servicenow://attachments/')) {
-        // Handle specific attachment requests
-        const attachmentId = uri.replace('servicenow://attachments/', '');
+      // Handle table schema resources - support any table name
+      if (uri.startsWith('servicenow://table-schema/')) {
+        const tableName = uri.replace('servicenow://table-schema/', '');
+        if (!tableName) {
+          throw new McpError(ErrorCode.InvalidRequest, 'Table name is required in URI. Use format: servicenow://table-schema/{table_name}');
+        }
+
         try {
-          const attachment = await this.getAttachment(attachmentId);
+          const tableSchema = await this.getTableSchema(tableName);
           return {
             contents: [
               {
                 uri,
-                mimeType: attachment.content_type || 'application/octet-stream',
-                blob: attachment.data
+                mimeType: 'application/json',
+                text: JSON.stringify(tableSchema, null, 2)
               }
             ]
           };
         } catch (error) {
-          throw new McpError(ErrorCode.InternalError, `Failed to retrieve attachment: ${error.message}`);
+          throw new McpError(
+            ErrorCode.InternalError,
+            `Failed to get table schema for "${tableName}": ${error.message}`
+          );
         }
       }
 
-      if (uri === 'servicenow://attachments') {
-        // Return attachment listing functionality
-        return {
-          contents: [
-            {
-              uri,
-              mimeType: 'application/json',
-              text: JSON.stringify({
-                message: 'Use servicenow://attachments/{sys_id} to access specific attachments',
-                description: 'ServiceNow Attachment API access',
-                methods: [
-                  'GET: servicenow://attachments/{attachment_sys_id} - Download attachment',
-                  'Tool: Use servicenow_get_record with table="sys_attachment" to list attachments'
-                ]
-              }, null, 2)
-            }
-          ]
-        };
+      // Handle table data sample resources - support any table name
+      if (uri.startsWith('servicenow://table-data/')) {
+        const tableName = uri.replace('servicenow://table-data/', '');
+        if (!tableName) {
+          throw new McpError(ErrorCode.InvalidRequest, 'Table name is required in URI. Use format: servicenow://table-data/{table_name}');
+        }
+
+        try {
+          const tableData = await this.getTableDataSample(tableName);
+          return {
+            contents: [
+              {
+                uri,
+                mimeType: 'application/json',
+                text: JSON.stringify(tableData, null, 2)
+              }
+            ]
+          };
+        } catch (error) {
+          throw new McpError(
+            ErrorCode.InternalError,
+            `Failed to get table data sample for "${tableName}": ${error.message}`
+          );
+        }
       }
 
-      throw new McpError(ErrorCode.InvalidRequest, `Unknown resource: ${uri}`);
+      // Handle specific record resources - support any table and sys_id
+      if (uri.startsWith('servicenow://record/')) {
+        const pathParts = uri.replace('servicenow://record/', '').split('/');
+        if (pathParts.length !== 2 || !pathParts[0] || !pathParts[1]) {
+          throw new McpError(ErrorCode.InvalidRequest, 'URI format should be servicenow://record/{table_name}/{sys_id}');
+        }
+        const [tableName, sysId] = pathParts;
+
+        try {
+          const record = await this.getRecord(tableName, sysId);
+          return {
+            contents: [
+              {
+                uri,
+                mimeType: 'application/json',
+                text: JSON.stringify(record, null, 2)
+              }
+            ]
+          };
+        } catch (error) {
+          throw new McpError(
+            ErrorCode.InternalError,
+            `Failed to get record ${sysId} from table "${tableName}": ${error.message}`
+          );
+        }
+      }
+
+      // Handle incident resources - support any incident number or sys_id
+      if (uri.startsWith('servicenow://incident/')) {
+        const identifier = uri.replace('servicenow://incident/', '');
+        if (!identifier) {
+          throw new McpError(ErrorCode.InvalidRequest, 'Incident number or sys_id is required in URI. Use format: servicenow://incident/{number_or_sys_id}');
+        }
+
+        try {
+          const incident = await this.getIncidentByIdentifier(identifier);
+          return {
+            contents: [
+              {
+                uri,
+                mimeType: 'application/json',
+                text: JSON.stringify(incident, null, 2)
+              }
+            ]
+          };
+        } catch (error) {
+          throw new McpError(
+            ErrorCode.InternalError,
+            `Failed to get incident "${identifier}": ${error.message}`
+          );
+        }
+      }
+
+      // Handle user profile resources - support any username or sys_id
+      if (uri.startsWith('servicenow://user/')) {
+        const identifier = uri.replace('servicenow://user/', '');
+        if (!identifier) {
+          throw new McpError(ErrorCode.InvalidRequest, 'Username or sys_id is required in URI. Use format: servicenow://user/{username_or_sys_id}');
+        }
+
+        try {
+          const user = await this.getUserByIdentifier(identifier);
+          return {
+            contents: [
+              {
+                uri,
+                mimeType: 'application/json',
+                text: JSON.stringify(user, null, 2)
+              }
+            ]
+          };
+        } catch (error) {
+          throw new McpError(
+            ErrorCode.InternalError,
+            `Failed to get user "${identifier}": ${error.message}`
+          );
+        }
+      }
+
+      // Handle process definition resources - support any process definition sys_id
+      if (uri.startsWith('servicenow://process-definition/')) {
+        const sysId = uri.replace('servicenow://process-definition/', '');
+        if (!sysId) {
+          throw new McpError(ErrorCode.InvalidRequest, 'Process definition sys_id is required in URI. Use format: servicenow://process-definition/{sys_id}');
+        }
+
+        try {
+          const processDefinition = await this.getProcessDefinitionWithDetails(sysId);
+          return {
+            contents: [
+              {
+                uri,
+                mimeType: 'application/json',
+                text: JSON.stringify(processDefinition, null, 2)
+              }
+            ]
+          };
+        } catch (error) {
+          throw new McpError(
+            ErrorCode.InternalError,
+            `Failed to get process definition "${sysId}": ${error.message}`
+          );
+        }
+      }
+
+      throw new McpError(
+        ErrorCode.InvalidRequest, 
+        `Unknown resource: ${uri}\n\nAvailable resource templates:\n` +
+        `• servicenow://table-schema/{table} - Get table field definitions\n` +
+        `• servicenow://table-data/{table} - Get sample table data\n` +
+        `• servicenow://record/{table}/{sys_id} - Get specific record\n` +
+        `• servicenow://incident/{number_or_sys_id} - Get incident details\n` +
+        `• servicenow://user/{username_or_sys_id} - Get user profile\n` +
+        `• servicenow://process-definition/{sys_id} - Get process definition with details\n` +
+        `• servicenow://examples - Get example prompts and documentation`
+      );
+    });
+  }
+
+  setupResourceTemplates() {
+    // List available resource templates
+    this.server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
+      return {
+        resourceTemplates: [
+          {
+            uriTemplate: 'servicenow://table-schema/{table}',
+            name: 'ServiceNow Table Schema',
+            description: 'Get field definitions and metadata for any ServiceNow table. Replace {table} with the table name (e.g., incident, sys_user, problem, change_request).',
+            mimeType: 'application/json'
+          },
+          {
+            uriTemplate: 'servicenow://table-data/{table}',
+            name: 'ServiceNow Table Data Sample',
+            description: 'Get sample data (first 10 records) from any ServiceNow table. Replace {table} with the table name (e.g., incident, sys_user, problem).',
+            mimeType: 'application/json'
+          },
+          {
+            uriTemplate: 'servicenow://record/{table}/{sys_id}',
+            name: 'ServiceNow Specific Record',
+            description: 'Get a specific record from any ServiceNow table by sys_id. Replace {table} with table name and {sys_id} with the record identifier.',
+            mimeType: 'application/json'
+          },
+          {
+            uriTemplate: 'servicenow://incident/{number_or_sys_id}',
+            name: 'ServiceNow Incident',
+            description: 'Get detailed incident information by incident number (e.g., INC0010001) or sys_id. Smart lookup determines identifier type.',
+            mimeType: 'application/json'
+          },
+          {
+            uriTemplate: 'servicenow://user/{username_or_sys_id}',
+            name: 'ServiceNow User Profile',
+            description: 'Get user profile information by username, email address, or sys_id. Smart lookup handles different identifier formats.',
+            mimeType: 'application/json'
+          },
+          {
+            uriTemplate: 'servicenow://process-definition/{sys_id}',
+            name: 'ServiceNow Process Definition',
+            description: 'Get complete process definition including associated lanes, activities, and metadata by process definition sys_id.',
+            mimeType: 'application/json'
+          }
+        ]
+      };
     });
   }
 
@@ -307,34 +467,325 @@ This document provides example prompts that you can use with MCP clients to inte
 ### Get Table Schema
 "Show me the schema and field definitions for the incident table"
 
+## MCP Resource Templates Available
+
+The ServiceNow MCP server provides dynamic resource templates that allow you to access ServiceNow data using URIs with parameters:
+
+### Table Schema Resource
+**URI Pattern:** \`servicenow://table-schema/{table}\`
+**Description:** Get field definitions for any ServiceNow table
+**Example URIs:**
+- \`servicenow://table-schema/incident\` - Get incident table schema
+- \`servicenow://table-schema/sys_user\` - Get user table schema  
+- \`servicenow://table-schema/cmdb_ci_computer\` - Get computer CI table schema
+
+### Table Data Sample Resource
+**URI Pattern:** \`servicenow://table-data/{table}\`
+**Description:** Get sample data (first 10 records) from any ServiceNow table
+**Example URIs:**
+- \`servicenow://table-data/incident\` - Get sample incidents
+- \`servicenow://table-data/sys_user\` - Get sample user records
+- \`servicenow://table-data/change_request\` - Get sample change requests
+
+### Specific Record Resource
+**URI Pattern:** \`servicenow://record/{table}/{sys_id}\`
+**Description:** Get a specific record from any ServiceNow table by sys_id
+**Example URIs:**
+- \`servicenow://record/incident/a1b2c3d4e5f6789012345678901234567890\`
+- \`servicenow://record/sys_user/12345678901234567890123456789012\`
+
+### Incident Resource
+**URI Pattern:** \`servicenow://incident/{number_or_sys_id}\`
+**Description:** Get detailed incident information by number or sys_id
+**Example URIs:**
+- \`servicenow://incident/INC0010001\` - Get incident by number
+- \`servicenow://incident/a1b2c3d4e5f6789012345678901234567890\` - Get incident by sys_id
+
+### User Profile Resource
+**URI Pattern:** \`servicenow://user/{username_or_sys_id}\`
+**Description:** Get user profile information by username, email, or sys_id
+**Example URIs:**
+- \`servicenow://user/john.doe\` - Get user by username
+- \`servicenow://user/john.doe@company.com\` - Get user by email
+- \`servicenow://user/12345678901234567890123456789012\` - Get user by sys_id
+
+### Process Definition Resource
+**URI Pattern:** \`servicenow://process-definition/{sys_id}\`
+**Description:** Get detailed process definition with lanes and activities
+**Example URIs:**
+- \`servicenow://process-definition/abcd1234567890123456789012345678\`
+
+## Resource Data Formats
+
+### Table Schema
+Returns JSON with field definitions including:
+- column_name: Field name
+- column_label: Display label
+- internal_type: Field data type
+- mandatory: Whether field is required
+- reference: Referenced table (for reference fields)
+- is_choice_field: Whether field has choice list
+
+### Table Data Sample
+Returns JSON with:
+- table: Table name
+- sample_count: Number of records returned
+- records: Array of sample records
+
+### Record Data
+Returns JSON with:
+- table: Table name
+- sys_id: Record identifier
+- record: Full record data
+
+### Incident Data
+Returns JSON with:
+- type: "incident"
+- identifier: The identifier used for lookup
+- lookup_method: "number" or "sys_id"
+- record: Full incident record
+
+### User Profile Data
+Returns JSON with:
+- type: "user"
+- identifier: The identifier used for lookup
+- lookup_method: "username_or_email" or "sys_id"
+- record: Full user record
+
+### Process Definition Data
+Returns JSON with:
+- type: "process_definition"
+- process_definition: Process definition record
+- lanes: Array of associated lanes
+- activities: Array of activities with lane information
+- summary: Statistics and status information
+
+## Usage Examples
+
+### Using Resource Templates
+"Get the table schema for the incident table using the servicenow://table-schema/incident resource"
+
+"Show me sample data from the change_request table using servicenow://table-data/change_request"
+
+"Retrieve the user profile for john.doe using servicenow://user/john.doe"
+
+"Get incident INC0010001 details using servicenow://incident/INC0010001"
+
 For more detailed examples, see the full documentation at: docs/EXAMPLE_PROMPTS.md
 `;
   }
 
-  async getAttachment(attachmentId) {
+  async getTableSchema(tableName) {
+    if (!this.serviceNowClient) {
+      throw new Error('ServiceNow client not initialized');
+    }
+
+    // Query the sys_dictionary table to get field definitions
+    const query = `name=${tableName}^active=true`;
+    const fields = 'element,column_label,internal_type,max_length,mandatory,reference,choice_field,default_value,comments';
+    const result = await this.serviceNowClient.queryTable('sys_dictionary', query, fields, 1000, 0, 'element');
+    
+    const fieldDefinitions = result.result;
+    
+    // Structure the response to match the format you specified
+    const tableSchema = {
+      table: tableName,
+      fields: fieldDefinitions.map(field => ({
+        column_name: field.element,
+        column_label: field.column_label,
+        internal_type: field.internal_type,
+        max_length: field.max_length,
+        mandatory: field.mandatory === 'true',
+        reference: field.reference,
+        is_choice_field: field.choice_field === 'true',
+        default_value: field.default_value,
+        comments: field.comments
+      })).filter(field => field.column_name && field.column_name !== '')
+    };
+
+    return tableSchema;
+  }
+
+  async getTableDataSample(tableName) {
     if (!this.serviceNowClient) {
       throw new Error('ServiceNow client not initialized');
     }
 
     try {
-      // First get attachment metadata
-      const attachmentRecord = await this.serviceNowClient.request('GET', `/table/sys_attachment/${attachmentId}`);
+      const result = await this.serviceNowClient.queryTable(tableName, '', '', 10, 0, '^sys_created_on');
+      const records = result.result;
       
-      if (!attachmentRecord.result) {
-        throw new Error('Attachment not found');
-      }
-
-      // Then get the actual file content
-      const fileResponse = await this.serviceNowClient.request('GET', `/attachment/${attachmentId}/file`, null, {
-        responseType: 'arraybuffer'
-      });
-
       return {
-        ...attachmentRecord.result,
-        data: Buffer.from(fileResponse).toString('base64')
+        table: tableName,
+        sample_count: records.length,
+        records: records
       };
     } catch (error) {
-      throw new Error(`Failed to retrieve attachment: ${error.message}`);
+      throw new Error(`Failed to get sample data for table "${tableName}": ${error.message}`);
+    }
+  }
+
+  async getRecord(tableName, sysId) {
+    if (!this.serviceNowClient) {
+      throw new Error('ServiceNow client not initialized');
+    }
+
+    try {
+      const result = await this.serviceNowClient.getRecord(tableName, sysId);
+      return {
+        table: tableName,
+        sys_id: sysId,
+        record: result.result
+      };
+    } catch (error) {
+      throw new Error(`Failed to get record ${sysId} from table "${tableName}": ${error.message}`);
+    }
+  }
+
+  async getIncidentByIdentifier(identifier) {
+    if (!this.serviceNowClient) {
+      throw new Error('ServiceNow client not initialized');
+    }
+
+    try {
+      let result;
+      
+      // Check if identifier looks like a sys_id (32 characters, alphanumeric)
+      if (identifier.length === 32 && /^[a-f0-9]{32}$/i.test(identifier)) {
+        result = await this.serviceNowClient.getRecord('incident', identifier);
+        return {
+          type: 'incident',
+          identifier: identifier,
+          lookup_method: 'sys_id',
+          record: result.result
+        };
+      } else {
+        // Assume it's an incident number
+        const query = `number=${identifier}`;
+        result = await this.serviceNowClient.queryTable('incident', query, '', 1, 0);
+        if (result.result.length === 0) {
+          throw new Error(`No incident found with number "${identifier}"`);
+        }
+        return {
+          type: 'incident',
+          identifier: identifier,
+          lookup_method: 'number',
+          record: result.result[0]
+        };
+      }
+    } catch (error) {
+      throw new Error(`Failed to get incident "${identifier}": ${error.message}`);
+    }
+  }
+
+  async getUserByIdentifier(identifier) {
+    if (!this.serviceNowClient) {
+      throw new Error('ServiceNow client not initialized');
+    }
+
+    try {
+      let result;
+      
+      // Check if identifier looks like a sys_id (32 characters, alphanumeric)
+      if (identifier.length === 32 && /^[a-f0-9]{32}$/i.test(identifier)) {
+        result = await this.serviceNowClient.getRecord('sys_user', identifier);
+        return {
+          type: 'user',
+          identifier: identifier,
+          lookup_method: 'sys_id',
+          record: result.result
+        };
+      } else {
+        // Assume it's a username or email
+        const query = `user_name=${identifier}^ORemail=${identifier}`;
+        result = await this.serviceNowClient.queryTable('sys_user', query, '', 1, 0);
+        if (result.result.length === 0) {
+          throw new Error(`No user found with username or email "${identifier}"`);
+        }
+        return {
+          type: 'user',
+          identifier: identifier,
+          lookup_method: 'username_or_email',
+          record: result.result[0]
+        };
+      }
+    } catch (error) {
+      throw new Error(`Failed to get user "${identifier}": ${error.message}`);
+    }
+  }
+
+  async getProcessDefinitionWithDetails(sysId) {
+    if (!this.serviceNowClient) {
+      throw new Error('ServiceNow client not initialized');
+    }
+
+    try {
+      // Get the process definition
+      const pdResult = await this.serviceNowClient.getRecord('sys_pd_process_definition', sysId);
+      const processDefinition = pdResult.result;
+
+      // Get associated lanes - try different possible table names
+      let lanes = [];
+      let activities = [];
+      
+      try {
+        const lanesQuery = `process_definition=${sysId}^active=true`;
+        const lanesResult = await this.serviceNowClient.queryTable('sys_pd_lane_definition', lanesQuery, '', 100, 0, 'order');
+        lanes = lanesResult.result;
+      } catch (laneError) {
+        // Try alternative table name
+        try {
+          const lanesQuery = `process_definition=${sysId}^active=true`;
+          const lanesResult = await this.serviceNowClient.queryTable('sys_pd_lane', lanesQuery, '', 100, 0, 'order');
+          lanes = lanesResult.result;
+        } catch (altError) {
+          console.error('Could not fetch lanes:', altError.message);
+        }
+      }
+
+      // Get activities for each lane
+      if (lanes.length > 0) {
+        for (const lane of lanes) {
+          try {
+            const activitiesQuery = `lane=${lane.sys_id}^active=true`;
+            const activitiesResult = await this.serviceNowClient.queryTable('sys_pd_activity_definition', activitiesQuery, '', 100, 0, 'order');
+            activities.push(...activitiesResult.result.map(activity => ({
+              ...activity,
+              lane_name: lane.name,
+              lane_sys_id: lane.sys_id
+            })));
+          } catch (activityError) {
+            // Try alternative table name
+            try {
+              const activitiesQuery = `lane=${lane.sys_id}^active=true`;
+              const activitiesResult = await this.serviceNowClient.queryTable('sys_pd_activity', activitiesQuery, '', 100, 0, 'order');
+              activities.push(...activitiesResult.result.map(activity => ({
+                ...activity,
+                lane_name: lane.name,
+                lane_sys_id: lane.sys_id
+              })));
+            } catch (altActivityError) {
+              console.error(`Could not fetch activities for lane ${lane.sys_id}:`, altActivityError.message);
+            }
+          }
+        }
+      }
+
+      return {
+        type: 'process_definition',
+        sys_id: sysId,
+        process_definition: processDefinition,
+        lanes: lanes,
+        activities: activities,
+        summary: {
+          total_lanes: lanes.length,
+          total_activities: activities.length,
+          status: processDefinition.status,
+          active: processDefinition.active === 'true'
+        }
+      };
+    } catch (error) {
+      throw new Error(`Failed to get process definition "${sysId}": ${error.message}`);
     }
   }
 
@@ -481,27 +932,6 @@ For more detailed examples, see the full documentation at: docs/EXAMPLE_PROMPTS.
             ]
           },
           {
-            name: 'upload_incident_attachment',
-            description: 'Upload a file attachment to an incident',
-            arguments: [
-              {
-                name: 'incident_number',
-                description: 'Incident number to attach file to',
-                required: true
-              },
-              {
-                name: 'file_description',
-                description: 'Description of the file being uploaded',
-                required: true
-              },
-              {
-                name: 'file_type',
-                description: 'Type of file (screenshot, log, document, etc.)',
-                required: false
-              }
-            ]
-          },
-          {
             name: 'process_definition_workflow',
             description: 'Work with process definitions and workflows',
             arguments: [
@@ -566,8 +996,6 @@ For more detailed examples, see the full documentation at: docs/EXAMPLE_PROMPTS.
           return this.getQueryUserDataPrompt(args);
         case 'analyze_incident_trends':
           return this.getAnalyzeIncidentTrendsPrompt(args);
-        case 'upload_incident_attachment':
-          return this.getUploadIncidentAttachmentPrompt(args);
         case 'process_definition_workflow':
           return this.getProcessDefinitionWorkflowPrompt(args);
         case 'bulk_update_records':
@@ -797,38 +1225,6 @@ Limit the results to 50 users and sort by name.`
     };
   }
 
-  getUploadIncidentAttachmentPrompt(args) {
-    const { incident_number, file_description, file_type } = args;
-
-    return {
-      description: 'Upload a file attachment to an incident',
-      messages: [
-        {
-          role: 'user',
-          content: {
-            type: 'text',
-            text: `Upload a ${file_type || 'file'} attachment to incident ${incident_number || '[INCIDENT_NUMBER]'}:
-
-1. First, get the incident details to obtain the sys_id:
-   - Use servicenow_incident_get with incident number: ${incident_number || '[INCIDENT_NUMBER]'}
-
-2. Then upload the attachment:
-   - Use servicenow_attachment_upload tool
-   - Table name: "incident"
-   - Table sys_id: [sys_id from step 1]
-   - File name: [provide the file name]
-   - Content type: [appropriate MIME type for ${file_type || 'the file'}]
-   - File content: [base64 encoded file content]
-
-File Description: ${file_description || '[Please describe what this file contains]'}
-
-Note: You'll need to provide the actual file content in base64 format when using this prompt.`
-          }
-        }
-      ]
-    };
-  }
-
   getProcessDefinitionWorkflowPrompt(args) {
     const { workflow_type, action, target_table } = args;
 
@@ -938,6 +1334,9 @@ Provide detailed results and next steps for working with this workflow.`
     console.error('[Run] ServiceNow MCP server listening (stdio)');
   }
 }
+
+// Export the class for testing
+export { ServiceNowMCPServer };
 
 async function main() {
   const server = new ServiceNowMCPServer();

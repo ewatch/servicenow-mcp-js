@@ -143,25 +143,6 @@ Arguments:
 - update_fields: "Set title to 'Senior Developer' and add phone extension"
 ```
 
-### Attachment Management Prompts
-
-#### `upload_incident_attachment`
-Upload a file attachment to a specific incident.
-
-**Arguments:**
-- `incident_number` (required): Incident number to attach file to
-- `file_description` (required): Description of the file being uploaded
-- `file_type` (optional): Type of file (screenshot, log, document, etc.)
-
-**Usage Example:**
-```
-Prompt: upload_incident_attachment
-Arguments:
-- incident_number: "INC0010001"
-- file_description: "Screenshot showing error message"
-- file_type: "screenshot"
-```
-
 ### Process Management Prompts
 
 #### `process_definition_workflow`
@@ -259,7 +240,6 @@ While prompts provide structured guidance, you can modify the generated content:
 
 ### Integration with Resources
 Prompts can reference file resources:
-- Upload attachments using file resources
 - Reference configuration files
 - Include documentation links
 

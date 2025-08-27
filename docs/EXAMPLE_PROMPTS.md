@@ -2,6 +2,74 @@
 
 This document provides example prompts that you can use with MCP clients to interact with the ServiceNow MCP Server. These examples demonstrate various use cases and the natural language prompts you can use.
 
+## MCP Resource Templates
+
+The ServiceNow MCP server provides dynamic resource templates that allow you to access ServiceNow data using parameterized URIs:
+
+### Table Schema Resource
+**URI Pattern:** `servicenow://table-schema/{table}`
+**Description:** Get field definitions for any ServiceNow table
+
+**Example Prompts:**
+```
+"Get the table schema for the incident table using servicenow://table-schema/incident"
+"Show me the field definitions for the change_request table"
+"What fields are available in the sys_user table?"
+```
+
+### Table Data Sample Resource
+**URI Pattern:** `servicenow://table-data/{table}`
+**Description:** Get sample data (first 10 records) from any ServiceNow table
+
+**Example Prompts:**
+```
+"Show me sample data from the incident table using servicenow://table-data/incident"
+"Get sample records from the change_request table"
+"What does data in the cmdb_ci_computer table look like?"
+```
+
+### Specific Record Resource
+**URI Pattern:** `servicenow://record/{table}/{sys_id}`
+**Description:** Get a specific record from any ServiceNow table by sys_id
+
+**Example Prompts:**
+```
+"Get the incident record with sys_id a1b2c3d4e5f6789012345678901234567890"
+"Show me the user record servicenow://record/sys_user/12345678901234567890123456789012"
+```
+
+### Incident Resource
+**URI Pattern:** `servicenow://incident/{number_or_sys_id}`
+**Description:** Get detailed incident information by number or sys_id
+
+**Example Prompts:**
+```
+"Get incident INC0010001 using servicenow://incident/INC0010001"
+"Show me the details of incident with sys_id a1b2c3d4e5f6789012345678901234567890"
+"Retrieve incident INC0005432 information"
+```
+
+### User Profile Resource
+**URI Pattern:** `servicenow://user/{username_or_sys_id}`
+**Description:** Get user profile information by username, email, or sys_id
+
+**Example Prompts:**
+```
+"Get user profile for john.doe using servicenow://user/john.doe"
+"Show me the user information for john.doe@company.com"
+"Retrieve user profile with sys_id 12345678901234567890123456789012"
+```
+
+### Process Definition Resource
+**URI Pattern:** `servicenow://process-definition/{sys_id}`
+**Description:** Get detailed process definition with lanes and activities
+
+**Example Prompts:**
+```
+"Get the process definition with sys_id abcd1234567890123456789012345678 including all lanes and activities"
+"Show me the complete process definition structure"
+```
+
 ## Incident Management Examples
 
 ### Creating Incidents
@@ -213,69 +281,6 @@ Get the complete details of process activity with sys_id activity789xyz123
 Find all process activities that are of type "approval" and are currently active
 ```
 
-## Attachment Management Examples
-
-### Listing Attachments
-
-**Example Prompt:**
-```
-Show me all attachments for incident INC0010001
-```
-
-**Example Prompt:**
-```
-List all files attached to change request with sys_id chg123abc456def, showing file names, sizes, and creation dates
-```
-
-**Example Prompt:**
-```
-Get all attachments for the user record with sys_id user789xyz012, display file name, content type, and size
-```
-
-### Downloading Attachments
-
-**Example Prompt:**
-```
-Download the attachment with sys_id attach123456 and show me its content in base64 format
-```
-
-**Example Prompt:**
-```
-Get the attachment file content for sys_id attach789xyz in binary format for direct file access
-```
-
-### Uploading Attachments
-
-**Example Prompt:**
-```
-Upload a screenshot to incident INC0010001:
-- File name: "error_screenshot.png"
-- Content type: "image/png"  
-- File content: [base64 encoded image data]
-```
-
-**Example Prompt:**
-```
-Attach a log file to change request CHG0030001:
-- File name: "deployment_log.txt"
-- Content type: "text/plain"
-- Content: [base64 encoded log file content]
-```
-
-### Getting Attachment Details
-
-**Example Prompt:**
-```
-Get the complete metadata for attachment sys_id attach456def789 including size, creation date, and associated record
-```
-
-### Deleting Attachments
-
-**Example Prompt:**
-```
-Delete the attachment with sys_id attach999xyz111 after confirming it exists
-```
-
 ## General Table API Examples
 
 ### Querying Any Table
@@ -384,24 +389,7 @@ Get user information for all users who have created more than 5 incidents this m
 Find all configuration items that have had incidents logged against them in the last 30 days. Start with incidents, then get CI details.
 ```
 
-## Resource and Attachment Examples
-
-### Working with File Attachments
-
-**Example Prompt:**
-```
-Upload a screenshot file to incident INC0010001 as an attachment with description "Error screenshot showing server timeout message"
-```
-
-**Example Prompt:**
-```
-Get all attachments for change request CHG0030001 and show their names, sizes, and content types
-```
-
-**Example Prompt:**
-```
-Download the attachment with sys_id attach123xyz456 from incident INC0010002
-```
+## Resource Examples
 
 ### Using File Resources
 
@@ -495,5 +483,68 @@ Provide a summary dashboard view.
 - `sys_pd_lane` - Process lanes
 - `sys_pd_activity` - Process activities
 - `sys_script_include` - Script includes
+
+## MCP Resources
+
+### Table Schema Resource
+
+Access table field definitions using the MCP resource URI pattern: `servicenow://table-schema/{tablename}`
+
+**Example Resource URIs:**
+- `servicenow://table-schema/incident` - Get incident table fields
+- `servicenow://table-schema/sys_user` - Get user table fields  
+- `servicenow://table-schema/cmdb_ci_computer` - Get computer CI table fields
+- `servicenow://table-schema/change_request` - Get change request table fields
+
+**Resource Output Format:**
+```json
+{
+  "table": "incident",
+  "fields": [
+    {
+      "column_name": "number",
+      "column_label": "Number",
+      "internal_type": "string",
+      "max_length": "40",
+      "mandatory": true,
+      "reference": "",
+      "is_choice_field": false,
+      "default_value": "",
+      "comments": "Incident number"
+    },
+    {
+      "column_name": "priority",
+      "column_label": "Priority", 
+      "internal_type": "integer",
+      "max_length": "40",
+      "mandatory": false,
+      "reference": "",
+      "is_choice_field": true,
+      "default_value": "5",
+      "comments": "Priority of the incident"
+    }
+  ]
+}
+```
+
+**Example Usage in Prompts:**
+```
+"Get the table schema for the incident table using the servicenow://table-schema/incident resource to understand what fields are available"
+```
+
+```
+"Access the servicenow://table-schema/sys_user resource to see the user table structure before creating a new user record"
+```
+
+The table schema resource provides detailed field information including:
+- `column_name`: The actual field name used in API calls
+- `column_label`: The human-readable display label
+- `internal_type`: The field data type (string, integer, reference, etc.)
+- `mandatory`: Whether the field is required
+- `reference`: The referenced table name (for reference fields)
+- `is_choice_field`: Whether the field has a choice list
+- `max_length`: Maximum field length
+- `default_value`: Default value for the field
+- `comments`: Field description/help text
 
 These examples should help you get started with natural language interactions with the ServiceNow MCP Server.

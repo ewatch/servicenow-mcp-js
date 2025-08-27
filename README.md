@@ -50,16 +50,21 @@ A Model Context Protocol (MCP) server that provides comprehensive access to Serv
 - Parameterized prompts for reusable interactions
 - Incident management, script development, and analysis workflows
 
-### 📁 MCP Resources (2 resources)
-- **NEW!** Access to ServiceNow attachments as resources
+### 📁 MCP Resources (7 resources)
+- **NEW!** Dynamic resource templates for ServiceNow data access
+- **servicenow://table-schema/{table}** - Get field definitions for any table
+- **servicenow://table-data/{table}** - Get sample data from any table
+- **servicenow://record/{table}/{sys_id}** - Get specific records by sys_id
+- **servicenow://incident/{number_or_sys_id}** - Get incidents by number or sys_id  
+- **servicenow://user/{username_or_sys_id}** - Get user profiles by username or sys_id
+- **servicenow://process-definition/{sys_id}** - Get complete process definitions with lanes/activities
 - Example prompts and usage guide resources
-- Integration with file-based workflows
 
 ## Total Capabilities
 
 - **42 tools** across **7 categories**
 - **10 structured prompts** for guided interactions
-- **2 resources** for file and documentation access
+- **7 dynamic resource templates** for flexible data access
 - **Complete process design** from definition to activities
 - **Full ServiceNow integration** with OAuth 2.0 authentication
 - **MCP protocol compliance** for AI assistant integration
@@ -219,6 +224,11 @@ Find all Script Includes that contain "StringUtil" in their name or code
 **Upload an attachment:**
 ```
 Upload a screenshot to incident INC0010001 as an attachment with description "Error screenshot showing server timeout message"
+```
+
+**Access table schema:**
+```
+Get the table schema for the incident table using the servicenow://table-schema/incident resource
 ```
 
 ## Authentication
